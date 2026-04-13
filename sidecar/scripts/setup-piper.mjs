@@ -27,8 +27,8 @@ import { Readable } from 'node:stream';
 const PIPER_VERSION = '2023.11.14-2';
 const PIPER_RELEASE_BASE = `https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}`;
 
-const VOICE_NAME = 'en_US-amy-low';
-const VOICE_RELPATH = 'en/en_US/amy/low';
+const VOICE_NAME = 'en_GB-alan-medium';
+const VOICE_RELPATH = 'en/en_GB/alan/medium';
 const HUGGINGFACE_BASE =
   'https://huggingface.co/rhasspy/piper-voices/resolve/main';
 

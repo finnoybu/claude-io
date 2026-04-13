@@ -22,7 +22,7 @@ export interface PiperPaths {
   modelJson: string;
 }
 
-const DEFAULT_VOICE_NAME = 'en_US-amy-low';
+const DEFAULT_VOICE_NAME = 'en_GB-alan-medium';
 
 export function claudeIoCacheDir(): string {
   return path.join(os.homedir(), '.claude-io');

@@ -3,6 +3,7 @@ import { Logger } from './services/Logger.js';
 import { ClaudeIoPanel } from './webview/ClaudeIoPanel.js';
 import { WebSpeechSttProvider } from './providers/WebSpeechSttProvider.js';
 import { WebSpeechTtsProvider } from './providers/WebSpeechTtsProvider.js';
+import { SidecarTtsProvider } from './providers/SidecarTtsProvider.js';
 import { WebviewVisionProvider } from './providers/WebviewVisionProvider.js';
 import { SessionState } from './state/SessionState.js';
 import { TranscriptSink } from './services/TranscriptSink.js';
@@ -21,7 +22,9 @@ let logger: Logger;
 let panel: ClaudeIoPanel;
 let state: SessionState;
 let sttProvider: WebSpeechSttProvider;
-let ttsProvider: WebSpeechTtsProvider;
+let webSpeechTtsProvider: WebSpeechTtsProvider;
+let sidecarTtsProvider: SidecarTtsProvider;
+let ttsProvider: SidecarTtsProvider;
 let visionProvider: WebviewVisionProvider;
 let transcriptSink: TranscriptSink;
 let imageSink: ImageSink;
@@ -35,7 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
   panel = new ClaudeIoPanel(context.extensionUri, logger, state);
 
   sttProvider = new WebSpeechSttProvider(panel, logger);
-  ttsProvider = new WebSpeechTtsProvider(panel, logger);
+  webSpeechTtsProvider = new WebSpeechTtsProvider(panel, logger);
   visionProvider = new WebviewVisionProvider(panel, logger);
 
   transcriptSink = new TranscriptSink(logger);
@@ -55,6 +58,13 @@ export function activate(context: vscode.ExtensionContext): void {
       logger.error('SidecarManager: startup failed', err);
     });
 
+  // TTS routes through the sidecar-backed provider (Piper), not the
+  // webview-based Web Speech API one. The webview provider still exists
+  // as a fallback and for future STT use where the webview path is
+  // relevant — but speakSelection goes to Piper via the sidecar.
+  sidecarTtsProvider = new SidecarTtsProvider(sidecarManager, logger);
+  ttsProvider = sidecarTtsProvider;
+
   const disposables: vscode.Disposable[] = [
     registerShowPanel(panel, logger),
     registerStartVoiceInput(panel, sttProvider, ttsProvider, state, transcriptSink, logger, context),
@@ -69,7 +79,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     ...disposables,
     sttProvider,
-    ttsProvider,
+    webSpeechTtsProvider,
+    sidecarTtsProvider,
     visionProvider,
     sidecarManager,
     panel,
