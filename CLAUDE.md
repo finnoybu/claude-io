@@ -31,7 +31,7 @@ This repo is outside the AEGIS Initiative workspace. It has no governance obliga
 
 - **Planned domains**: `claude-io.dev` (IDE plugins), `claude-io.app` (mobile apps) — neither registered yet
 - **Repo location**: `d:/dev/claude-io/` (local only; no GitHub remote yet)
-- **License**: TBD
+- **License**: Apache-2.0 (chosen for patent grant + migration compatibility with aegis-labs)
 
 ## Cross-repo pointers
 

@@ -53,4 +53,6 @@ Experimental. No commitments, no timeline, no users. If it proves itself, it mig
 
 ## License
 
-TBD — will pick before first public commit.
+Apache-2.0. See [LICENSE](./LICENSE).
+
+Picked for the explicit patent grant (relevant in the voice/vision/AI space), compatibility with the eventual migration path into `aegis-labs` (also Apache-2.0), and low contributor friction.
