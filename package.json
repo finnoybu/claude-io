@@ -1,0 +1,199 @@
+{
+  "name": "claude-io",
+  "displayName": "claude-io",
+  "description": "Unofficial voice and vision I/O helpers for developers using Claude — voice input (STT), voice output (TTS), and webcam frame capture delivered via a webview. Routes transcripts and image paths to clipboard or active editor; direct Claude Code integration is not yet implemented. Not affiliated with Anthropic.",
+  "version": "0.0.1",
+  "publisher": "finnoybu",
+  "author": "Finnoybu",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finnoybu/claude-io"
+  },
+  "bugs": {
+    "url": "https://github.com/finnoybu/claude-io/issues"
+  },
+  "homepage": "https://github.com/finnoybu/claude-io#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "voice",
+    "speech",
+    "tts",
+    "stt",
+    "vision",
+    "accessibility"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claude-io.showPanel",
+        "title": "Show Panel",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.startVoiceInput",
+        "title": "Start Voice Input",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.stopVoiceInput",
+        "title": "Stop Voice Input",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.toggleVoiceInput",
+        "title": "Toggle Voice Input",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.speakSelection",
+        "title": "Speak Selection",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.stopSpeaking",
+        "title": "Stop Speaking",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.captureImage",
+        "title": "Capture Image from Camera",
+        "category": "claude-io"
+      },
+      {
+        "command": "claude-io.showLog",
+        "title": "Show Log",
+        "category": "claude-io"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claude-io.startVoiceInput",
+        "key": "ctrl+alt+shift+v",
+        "mac": "cmd+alt+shift+v"
+      },
+      {
+        "command": "claude-io.stopVoiceInput",
+        "key": "ctrl+alt+shift+b",
+        "mac": "cmd+alt+shift+b"
+      },
+      {
+        "command": "claude-io.speakSelection",
+        "key": "ctrl+alt+shift+s",
+        "mac": "cmd+alt+shift+s",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "claude-io.stopSpeaking",
+        "key": "ctrl+alt+shift+x",
+        "mac": "cmd+alt+shift+x"
+      },
+      {
+        "command": "claude-io.captureImage",
+        "key": "ctrl+alt+shift+c",
+        "mac": "cmd+alt+shift+c"
+      }
+    ],
+    "configuration": {
+      "title": "claude-io",
+      "properties": {
+        "claudeIo.stt.provider": {
+          "type": "string",
+          "enum": [
+            "web-speech"
+          ],
+          "default": "web-speech",
+          "description": "Speech-to-text provider. MVP supports web-speech only."
+        },
+        "claudeIo.stt.language": {
+          "type": "string",
+          "default": "en-US",
+          "description": "BCP-47 language tag for speech recognition (e.g., en-US, en-GB, es-ES)."
+        },
+        "claudeIo.stt.continuous": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep recognition running until explicitly stopped."
+        },
+        "claudeIo.tts.provider": {
+          "type": "string",
+          "enum": [
+            "web-speech"
+          ],
+          "default": "web-speech",
+          "description": "Text-to-speech provider. MVP supports web-speech only."
+        },
+        "claudeIo.tts.voice": {
+          "type": "string",
+          "default": "",
+          "description": "Preferred voice name. Empty uses the platform default."
+        },
+        "claudeIo.tts.rate": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.1,
+          "maximum": 10,
+          "description": "Speech rate for TTS playback."
+        },
+        "claudeIo.tts.pitch": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Speech pitch for TTS playback."
+        },
+        "claudeIo.vision.provider": {
+          "type": "string",
+          "enum": [
+            "webview"
+          ],
+          "default": "webview",
+          "description": "Camera/vision provider. MVP supports the webview provider only."
+        },
+        "claudeIo.transcript.destination": {
+          "type": "string",
+          "enum": [
+            "clipboard",
+            "activeEditor",
+            "claudeCode"
+          ],
+          "default": "clipboard",
+          "description": "Where to route finalized transcripts. 'claudeCode' is a placeholder and falls back to clipboard until direct Claude Code integration is implemented."
+        },
+        "claudeIo.image.destination": {
+          "type": "string",
+          "enum": [
+            "tempFile"
+          ],
+          "default": "tempFile",
+          "description": "Where captured camera frames are saved. 'tempFile' writes a PNG to a temp directory and copies the absolute path to the clipboard."
+        },
+        "claudeIo.allowNetworkSpeechRecognition": {
+          "type": "boolean",
+          "default": true,
+          "description": "WARNING: Web Speech API recognition typically routes audio to a cloud service (Google, in Chromium-based runtimes). Set to false to disable web-speech STT until a local provider is available. Does not affect TTS, which runs locally via the OS."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.5.0"
+  }
+}
