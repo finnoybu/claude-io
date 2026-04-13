@@ -3,6 +3,30 @@ const esbuild = require('esbuild');
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
+/**
+ * Plugin that emits machine-parseable build-start and build-end markers.
+ * VSCode's background-task problem matcher uses these to know when a
+ * watch-mode rebuild has started and finished, which is what makes F5
+ * "Run Extension" wait for the first successful build before launching.
+ */
+const buildPhaseLoggerPlugin = {
+  name: 'build-phase-logger',
+  setup(build) {
+    build.onStart(() => {
+      console.log('[claude-io] esbuild: build started');
+    });
+    build.onEnd((result) => {
+      if (result.errors.length > 0) {
+        console.log(
+          `[claude-io] esbuild: build finished with ${result.errors.length} error(s)`,
+        );
+      } else {
+        console.log('[claude-io] esbuild: build finished');
+      }
+    });
+  },
+};
+
 async function main() {
   const ctx = await esbuild.context({
     entryPoints: ['src/extension.ts'],
@@ -18,6 +42,7 @@ async function main() {
     logOverride: {
       'direct-eval': 'silent',
     },
+    plugins: [buildPhaseLoggerPlugin],
   });
 
   if (watch) {
@@ -26,7 +51,6 @@ async function main() {
   } else {
     await ctx.rebuild();
     await ctx.dispose();
-    console.log('[claude-io] esbuild: build complete');
   }
 }
 

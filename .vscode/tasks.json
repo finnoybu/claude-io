@@ -4,7 +4,6 @@
     {
       "type": "npm",
       "script": "watch",
-      "problemMatcher": [],
       "isBackground": true,
       "presentation": {
         "reveal": "never"
@@ -14,7 +13,28 @@
         "isDefault": true
       },
       "label": "npm: watch",
-      "detail": "node esbuild.js --watch"
+      "detail": "node esbuild.js --watch",
+      "problemMatcher": [
+        {
+          "owner": "claude-io-esbuild",
+          "fileLocation": ["relative", "${workspaceFolder}"],
+          "pattern": [
+            {
+              "regexp": "^\\s*([^\\s].+):(\\d+):(\\d+):\\s+(error|warning):\\s+(.+)$",
+              "file": 1,
+              "line": 2,
+              "column": 3,
+              "severity": 4,
+              "message": 5
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "^\\[claude-io\\] esbuild: build started$",
+            "endsPattern": "^\\[claude-io\\] esbuild: build finished(?: with \\d+ error\\(s\\))?$"
+          }
+        }
+      ]
     }
   ]
 }
