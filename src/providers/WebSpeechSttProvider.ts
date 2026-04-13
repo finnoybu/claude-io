@@ -104,11 +104,13 @@ export class WebSpeechSttProvider implements SttProvider, vscode.Disposable {
           this.logger.error('WebSpeechSttProvider: webview error', msg.payload);
           this.errorEmitter.fire(msg.payload);
           this.panel.setAiState('error');
+          this.panel.setMode('idle');
           // Also signal end so any accumulators can flush.
           this.endedEmitter.fire();
           break;
         case 'stt.ended':
           this.endedEmitter.fire();
+          this.panel.setMode('idle');
           break;
         default:
           break;

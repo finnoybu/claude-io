@@ -14,6 +14,21 @@ A VSCode extension that adds three I/O surfaces to your development environment:
 
 The underlying model, conversation, and memory are unchanged — this extension just adds new *input and output channels* for developers who want to collaborate with Claude through voice and visual context rather than only typing.
 
+## Status as of 2026-04-13
+
+This project is in very early prototype stage. **Not all three surfaces work yet.** Here is what we have empirically verified on the dev laptop:
+
+| Surface | Status | Notes |
+|---|---|---|
+| Extension activation, panel, webview rendering | ✅ works | Panel loads, AI presence ring animates, theme colors apply |
+| **Voice output (TTS)** | ✅ works | Uses OS speech engine (Windows SAPI etc.). Robotic default voices; better voices planned |
+| **Voice input (STT)** | ❌ blocked | VSCode's webview does not grant `SpeechRecognition` permission. Fails immediately with `not-allowed`. Architectural rewrite to a sidecar process is required |
+| **Camera capture** | ❌ blocked | Same root cause as STT — VSCode webview denies `getUserMedia`. Requires the same sidecar rewrite |
+
+The STT and camera failures are **not bugs in claude-io** — they reflect a fundamental VSCode webview security model that denies media device access without a permission prompt mechanism extensions can invoke. The next architectural milestone is moving mic and camera work out of the webview and into a native sidecar process that the extension host spawns and communicates with via IPC. See tracked issues for the plan.
+
+Until the sidecar work lands, claude-io is effectively a TTS tool. That is a real feature and you can use it today, but it is not the full pitch.
+
 ## Why it exists
 
 Text is a good medium for a lot of software engineering work, but some things land differently spoken, and some things are easier shown than described. *"See this error on my monitor"* and *"let me sketch the flow on a whiteboard"* are natural moves in human-to-human collaboration and currently friction-heavy when collaborating with an AI assistant. This project is a prototype to find out whether closing those gaps genuinely changes the feel of collaboration — or whether text is actually enough and the wish is imaginary.

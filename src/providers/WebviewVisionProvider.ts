@@ -4,6 +4,7 @@ import { ClaudeIoPanel } from '../webview/ClaudeIoPanel.js';
 import { VisionCaptureProvider, CapturedFrame, ProviderError } from './types.js';
 
 const CAPTURE_TIMEOUT_MS = 5000;
+const ENABLE_TIMEOUT_MS = 5000;
 
 /**
  * Webview-backed vision capture provider. Delegates getUserMedia and
@@ -16,6 +17,9 @@ export class WebviewVisionProvider implements VisionCaptureProvider, vscode.Disp
 
   private messageSubscription: vscode.Disposable | undefined;
   private panelDisposedSubscription: vscode.Disposable | undefined;
+  private pendingEnable:
+    | { resolve: () => void; reject: (err: Error) => void; timeout: NodeJS.Timeout }
+    | undefined;
   private pendingCapture:
     | { resolve: (frame: CapturedFrame) => void; reject: (err: Error) => void; timeout: NodeJS.Timeout }
     | undefined;
@@ -39,9 +43,19 @@ export class WebviewVisionProvider implements VisionCaptureProvider, vscode.Disp
   async enable(): Promise<void> {
     await this.panel.ensurePanel();
     this.ensureSubscribed();
+    if (this.pendingEnable) {
+      throw new Error('A camera enable is already in progress');
+    }
     this.logger.info('WebviewVisionProvider.enable');
     this.panel.setMode('camera');
-    this.panel.postMessage({ type: 'camera.enable' });
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingEnable = undefined;
+        reject(new Error(`Timed out waiting for camera to enable (${ENABLE_TIMEOUT_MS}ms)`));
+      }, ENABLE_TIMEOUT_MS);
+      this.pendingEnable = { resolve, reject, timeout };
+      this.panel.postMessage({ type: 'camera.enable' });
+    });
   }
 
   async captureFrame(): Promise<CapturedFrame> {
@@ -74,12 +88,25 @@ export class WebviewVisionProvider implements VisionCaptureProvider, vscode.Disp
   }
 
   dispose(): void {
+    this.failPendingEnable(new Error('WebviewVisionProvider disposed'));
     this.failPendingCapture(new Error('WebviewVisionProvider disposed'));
     this.messageSubscription?.dispose();
     this.messageSubscription = undefined;
     this.panelDisposedSubscription?.dispose();
     this.panelDisposedSubscription = undefined;
     this.errorEmitter.dispose();
+  }
+
+  private failPendingEnable(err: Error): void {
+    if (!this.pendingEnable) return;
+    const { reject, timeout } = this.pendingEnable;
+    clearTimeout(timeout);
+    this.pendingEnable = undefined;
+    try {
+      reject(err);
+    } catch {
+      // ignore — reject on an already-settled promise is a no-op
+    }
   }
 
   private failPendingCapture(err: Error): void {
@@ -100,6 +127,14 @@ export class WebviewVisionProvider implements VisionCaptureProvider, vscode.Disp
     }
     this.messageSubscription = this.panel.onMessage((msg) => {
       switch (msg.type) {
+        case 'camera.enabled':
+          if (this.pendingEnable) {
+            const { resolve, timeout } = this.pendingEnable;
+            clearTimeout(timeout);
+            this.pendingEnable = undefined;
+            resolve();
+          }
+          break;
         case 'camera.frame':
           if (this.pendingCapture) {
             const { resolve, timeout } = this.pendingCapture;
@@ -116,8 +151,10 @@ export class WebviewVisionProvider implements VisionCaptureProvider, vscode.Disp
         case 'camera.error':
           this.logger.error('WebviewVisionProvider: webview error', msg.payload);
           this.errorEmitter.fire(msg.payload);
+          this.failPendingEnable(new Error(msg.payload.message));
           this.failPendingCapture(new Error(msg.payload.message));
           this.panel.setAiState('error');
+          this.panel.setMode('idle');
           break;
         default:
           break;
