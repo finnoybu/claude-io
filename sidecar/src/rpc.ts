@@ -46,6 +46,8 @@ export type LogLevel = 'info' | 'warn' | 'error';
 export class RpcServer {
   private readonly handlers = new Map<string, RequestHandler>();
   private buffer = '';
+  private readonly inFlight = new Set<Promise<void>>();
+  private draining = false;
 
   constructor() {
     process.stdin.setEncoding('utf8');
@@ -53,10 +55,28 @@ export class RpcServer {
       this.onStdinData(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
     });
     process.stdin.on('end', () => {
-      this.log('info', 'sidecar: stdin closed, exiting');
-      // Give the last log a chance to flush before we exit.
-      setTimeout(() => process.exit(0), 50);
+      void this.drainAndExit('stdin closed');
     });
+  }
+
+  /**
+   * Wait for all in-flight requests to complete, then exit. Called when
+   * stdin closes (parent hung up) or on explicit shutdown. Idempotent.
+   */
+  private async drainAndExit(reason: string): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    const pendingCount = this.inFlight.size;
+    this.log('info', `sidecar: ${reason}, draining ${pendingCount} in-flight request(s)`);
+    // Wait for every in-flight handler to settle before exiting.
+    // Promise.allSettled ensures a rejection in one handler doesn't
+    // short-circuit the drain for others.
+    if (pendingCount > 0) {
+      await Promise.allSettled(Array.from(this.inFlight));
+    }
+    this.log('info', 'sidecar: drain complete, exiting');
+    // Give the final log line time to flush to stdout before we exit.
+    setTimeout(() => process.exit(0), 50);
   }
 
   register(method: string, handler: RequestHandler): void {
@@ -116,18 +136,26 @@ export class RpcServer {
       });
       return;
     }
-    try {
-      const result = await handler(req.params);
-      this.send({ id: req.id, result });
-    } catch (err) {
-      this.send({
-        id: req.id,
-        error: {
-          code: 'handler-error',
-          message: err instanceof Error ? err.message : String(err),
-        },
-      });
-    }
+    // Track the handler's promise so drainAndExit can wait for it on
+    // stdin-close. We wrap handler invocation in an inner async function
+    // so we have a single promise to add to the set.
+    const promise = (async () => {
+      try {
+        const result = await handler(req.params);
+        this.send({ id: req.id, result });
+      } catch (err) {
+        this.send({
+          id: req.id,
+          error: {
+            code: 'handler-error',
+            message: err instanceof Error ? err.message : String(err),
+          },
+        });
+      }
+    })();
+    this.inFlight.add(promise);
+    promise.finally(() => this.inFlight.delete(promise));
+    await promise;
   }
 
   private send(msg: RpcOutgoing): void {

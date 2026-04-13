@@ -10,8 +10,12 @@
  */
 
 import { RpcServer } from './rpc.js';
+import { speak as piperSpeak } from './tts/piperTts.js';
 
 const VERSION = '0.0.1';
+
+// In-flight TTS state so we can cancel mid-playback.
+let currentTtsAbort: AbortController | undefined;
 
 process.on('uncaughtException', (err) => {
   process.stderr.write(
@@ -45,6 +49,43 @@ rpc.register('shutdown', async () => {
 
 rpc.register('version', async () => {
   return { version: VERSION };
+});
+
+rpc.register('tts.speak', async (params) => {
+  const { text, voice } = (params ?? {}) as { text?: unknown; voice?: unknown };
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new Error('tts.speak: expected { text: non-empty string }');
+  }
+  const voiceName = typeof voice === 'string' && voice.length > 0 ? voice : undefined;
+
+  // Cancel any previous playback before starting new speech.
+  currentTtsAbort?.abort();
+  const controller = new AbortController();
+  currentTtsAbort = controller;
+
+  rpc.event('tts.started', { textLength: text.length });
+  try {
+    await piperSpeak(text, {
+      voice: voiceName,
+      signal: controller.signal,
+      onLog: (level, message) => rpc.log(level, `[piper] ${message}`),
+    });
+  } finally {
+    if (currentTtsAbort === controller) {
+      currentTtsAbort = undefined;
+    }
+  }
+  rpc.event('tts.ended', {});
+  return { status: 'ok' };
+});
+
+rpc.register('tts.cancel', async () => {
+  if (currentTtsAbort) {
+    currentTtsAbort.abort();
+    currentTtsAbort = undefined;
+    return { status: 'cancelled' };
+  }
+  return { status: 'nothing-to-cancel' };
 });
 
 rpc.log('info', `sidecar: started (pid=${process.pid}, node=${process.version})`);
