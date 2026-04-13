@@ -7,6 +7,7 @@ import { WebviewVisionProvider } from './providers/WebviewVisionProvider.js';
 import { SessionState } from './state/SessionState.js';
 import { TranscriptSink } from './services/TranscriptSink.js';
 import { ImageSink } from './services/ImageSink.js';
+import { SidecarManager } from './sidecar/SidecarManager.js';
 import { registerShowPanel } from './commands/showPanel.js';
 import { registerStartVoiceInput } from './commands/startVoiceInput.js';
 import { registerStopVoiceInput } from './commands/stopVoiceInput.js';
@@ -24,6 +25,7 @@ let ttsProvider: WebSpeechTtsProvider;
 let visionProvider: WebviewVisionProvider;
 let transcriptSink: TranscriptSink;
 let imageSink: ImageSink;
+let sidecarManager: SidecarManager;
 
 export function activate(context: vscode.ExtensionContext): void {
   logger = new Logger('claude-io');
@@ -38,6 +40,20 @@ export function activate(context: vscode.ExtensionContext): void {
 
   transcriptSink = new TranscriptSink(logger);
   imageSink = new ImageSink(logger);
+
+  // Spawn the audio sidecar process and verify the IPC loop works.
+  // This is fire-and-forget at activation — we don't block the extension
+  // from loading if the sidecar has issues, we just log and carry on.
+  sidecarManager = new SidecarManager(context.extensionUri, logger);
+  void sidecarManager
+    .start()
+    .then(() => sidecarManager.request('ping'))
+    .then((pong) => {
+      logger.info('SidecarManager: ping successful', pong);
+    })
+    .catch((err) => {
+      logger.error('SidecarManager: startup failed', err);
+    });
 
   const disposables: vscode.Disposable[] = [
     registerShowPanel(panel, logger),
@@ -55,6 +71,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sttProvider,
     ttsProvider,
     visionProvider,
+    sidecarManager,
     panel,
     logger,
   );
