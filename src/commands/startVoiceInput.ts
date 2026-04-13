@@ -4,7 +4,6 @@ import { ClaudeIoPanel } from '../webview/ClaudeIoPanel.js';
 import { SessionState } from '../state/SessionState.js';
 import { SttProvider, TtsProvider } from '../providers/types.js';
 import { TranscriptSink } from '../services/TranscriptSink.js';
-import { showNetworkNoticeOnce } from './networkNotice.js';
 
 export function registerStartVoiceInput(
   panel: ClaudeIoPanel,
@@ -13,7 +12,7 @@ export function registerStartVoiceInput(
   state: SessionState,
   sink: TranscriptSink,
   logger: Logger,
-  context: vscode.ExtensionContext,
+  _context: vscode.ExtensionContext,
 ): vscode.Disposable {
   /**
    * In continuous mode, the STT provider fires `final` for every finalized
@@ -69,16 +68,6 @@ export function registerStartVoiceInput(
     }
 
     const config = vscode.workspace.getConfiguration('claudeIo');
-    const networkAllowed = config.get<boolean>('allowNetworkSpeechRecognition', true);
-    if (!networkAllowed) {
-      void vscode.window.showWarningMessage(
-        'claude-io: web-speech STT is disabled (claudeIo.allowNetworkSpeechRecognition=false). ' +
-          'Enable it or install a local STT provider.',
-      );
-      return;
-    }
-
-    await showNetworkNoticeOnce(context);
 
     // Cancel any in-progress TTS — voice in/out are mutually exclusive.
     if (state.isSpeaking) {
@@ -101,8 +90,9 @@ export function registerStartVoiceInput(
         logger.warn('startVoiceInput: STT provider not available');
         void vscode.window
           .showErrorMessage(
-            'claude-io: speech recognition is not available in this environment. ' +
-              'Web Speech API is not supported in your VSCode build. See README for details.',
+            'claude-io: speech recognition is not available. ' +
+              'Make sure the sidecar is running and whisper.cpp is installed ' +
+              '(run `node sidecar/scripts/setup-piper.mjs`).',
             'Show Log',
           )
           .then((selection) => {

@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // are wired to them any more.
   sidecarTtsProvider = new SidecarTtsProvider(sidecarManager, logger);
   ttsProvider = sidecarTtsProvider;
-  sidecarSttProvider = new SidecarSttProvider(sidecarManager, logger);
+  sidecarSttProvider = new SidecarSttProvider(sidecarManager, panel, logger);
   sttProvider = sidecarSttProvider;
 
   const disposables: vscode.Disposable[] = [

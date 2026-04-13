@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '../services/Logger.js';
 import { SidecarManager, SidecarEvent } from '../sidecar/SidecarManager.js';
+import { ClaudeIoPanel } from '../webview/ClaudeIoPanel.js';
 import { SttProvider, SttStartOptions, ProviderError } from './types.js';
 
 /**
@@ -38,6 +39,7 @@ export class SidecarSttProvider implements SttProvider, vscode.Disposable {
 
   constructor(
     private readonly sidecar: SidecarManager,
+    private readonly panel: ClaudeIoPanel,
     private readonly logger: Logger,
   ) {
     this.eventSubscription = this.sidecar.onEvent((ev: SidecarEvent) => this.handleSidecarEvent(ev));
@@ -64,9 +66,15 @@ export class SidecarSttProvider implements SttProvider, vscode.Disposable {
     this.logger.info(
       `SidecarSttProvider.start (language=${opts.language}, continuous=${opts.continuous})`,
     );
+    this.panel.setMode('recording');
+    this.panel.setAiState('listening');
     try {
+      // whisper.cpp uses bare ISO 639-1 language codes (e.g. "en", "es")
+      // rather than the BCP-47 tags Web Speech used (e.g. "en-US", "en-GB").
+      // Strip the region suffix before handing it off.
+      const language = opts.language.split('-')[0] ?? 'en';
       await this.sidecar.request('stt.start', {
-        language: opts.language,
+        language,
         // Continuous mode is always-on for whisper-stream. The opts flag
         // is kept for interface compatibility; the setting that actually
         // matters is stepMs / lengthMs.
@@ -75,6 +83,8 @@ export class SidecarSttProvider implements SttProvider, vscode.Disposable {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error('SidecarSttProvider.start failed', err);
+      this.panel.setMode('idle');
+      this.panel.setAiState('error');
       this.errorEmitter.fire({ code: 'stt-start-failed', message });
       throw err;
     }
@@ -92,6 +102,8 @@ export class SidecarSttProvider implements SttProvider, vscode.Disposable {
         text: string;
       };
       this.isSessionActive = false;
+      this.panel.setMode('idle');
+      this.panel.setAiState('idle');
       const text = (result.text ?? '').trim();
       if (text.length > 0) {
         this.logger.info(`SidecarSttProvider.stop: final transcript (${text.length} chars)`);
@@ -104,6 +116,8 @@ export class SidecarSttProvider implements SttProvider, vscode.Disposable {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error('SidecarSttProvider.stop failed', err);
       this.isSessionActive = false;
+      this.panel.setMode('idle');
+      this.panel.setAiState('error');
       this.errorEmitter.fire({ code: 'stt-stop-failed', message });
       this.endedEmitter.fire();
       throw err;
