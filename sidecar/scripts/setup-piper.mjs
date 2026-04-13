@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 /**
- * claude-io sidecar — Piper TTS setup script.
+ * claude-io sidecar — setup script.
  *
- * Downloads the Piper binary for the current platform and a small English
- * voice model (en_US-amy-low, ~15 MB) into ~/.claude-io/piper and
- * ~/.claude-io/voices respectively. Run once per machine.
+ * Downloads and installs all third-party binaries and models the sidecar
+ * needs to run: Piper TTS (binary + Alan voice model) and whisper.cpp
+ * (binary + ggml-base model). Everything lands under ~/.claude-io/ and
+ * is idempotent — re-running skips anything already installed.
  *
- * Usage:
+ * Run once per machine:
  *   node sidecar/scripts/setup-piper.mjs
  *
- * This script is standalone — no external dependencies, uses only the
- * Node standard library. It's in .mjs form so you can run it directly
- * without a build step.
+ * (Script name is historical — it now installs Whisper too.)
+ *
+ * Standalone: no external dependencies, uses only the Node standard
+ * library. It's in .mjs form so you can run it directly without a
+ * build step.
  */
 
 import * as fs from 'node:fs';
@@ -36,7 +39,37 @@ const CACHE_DIR = path.join(os.homedir(), '.claude-io');
 const PIPER_DIR = path.join(CACHE_DIR, 'piper');
 const VOICES_DIR = path.join(CACHE_DIR, 'voices');
 
+// whisper.cpp config. The release tag and asset name map to the
+// ggml-org/whisper.cpp repository (the project was renamed from
+// ggerganov/whisper.cpp in early 2026).
+const WHISPER_VERSION = 'v1.8.4';
+const WHISPER_RELEASE_BASE = `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}`;
+const WHISPER_MODEL_NAME = 'ggml-base.bin';
+const WHISPER_MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODEL_NAME}`;
+const WHISPER_DIR = path.join(CACHE_DIR, 'whisper');
+const WHISPER_MODELS_DIR = path.join(CACHE_DIR, 'whisper-models');
+
 // ---------- Platform detection ----------
+
+function detectWhisperAsset() {
+  const platform = os.platform();
+  const arch = os.arch();
+  if (platform === 'win32' && arch === 'x64') {
+    return {
+      assetName: `whisper-bin-x64.zip`,
+      archiveKind: 'zip',
+      // whisper-bin-x64.zip extracts into a Release/ subdirectory.
+      // whisperPaths.ts looks there directly.
+      streamBinaryName: 'whisper-stream.exe',
+    };
+  }
+  // Other platforms: whisper.cpp releases are x64 Windows only; Linux/macOS
+  // users currently need to build from source. We surface a friendly error.
+  throw new Error(
+    `whisper.cpp: no prebuilt binary available for ${platform}/${arch} yet. ` +
+      `Build from source: https://github.com/ggml-org/whisper.cpp`,
+  );
+}
 
 function detectPiperAsset() {
   const platform = os.platform();
@@ -151,10 +184,57 @@ function findFileRecursive(dir, filename) {
   return null;
 }
 
+// ---------- Whisper install ----------
+
+async function installWhisper() {
+  await ensureDir(WHISPER_DIR);
+  await ensureDir(WHISPER_MODELS_DIR);
+
+  const asset = detectWhisperAsset();
+  const releaseDir = path.join(WHISPER_DIR, 'Release');
+  const streamExePath = path.join(releaseDir, asset.streamBinaryName);
+
+  if (fs.existsSync(streamExePath) && fileSize(streamExePath) > 0) {
+    console.log(`whisper: already installed at ${releaseDir}`);
+  } else {
+    console.log(`whisper: downloading ${asset.assetName} (${WHISPER_VERSION})`);
+    const archivePath = path.join(WHISPER_DIR, asset.assetName);
+    try {
+      await downloadFile(`${WHISPER_RELEASE_BASE}/${asset.assetName}`, archivePath);
+      console.log(`whisper: extracting to ${WHISPER_DIR}`);
+      extractArchive(archivePath, WHISPER_DIR, asset.archiveKind);
+      if (!fs.existsSync(streamExePath)) {
+        throw new Error(`whisper: ${asset.streamBinaryName} not found at ${streamExePath} after extract`);
+      }
+      await fsp.unlink(archivePath);
+      console.log(`whisper: installed at ${releaseDir}`);
+    } catch (err) {
+      console.error(`whisper: install failed: ${err.message}`);
+      process.exit(1);
+    }
+  }
+
+  const modelPath = path.join(WHISPER_MODELS_DIR, WHISPER_MODEL_NAME);
+  if (fs.existsSync(modelPath) && fileSize(modelPath) > 0) {
+    console.log(`whisper model: ${WHISPER_MODEL_NAME} already installed (${(fileSize(modelPath) / 1024 / 1024).toFixed(1)} MB)`);
+  } else {
+    console.log(`whisper model: downloading ${WHISPER_MODEL_NAME} (~142 MB)`);
+    try {
+      await downloadFile(WHISPER_MODEL_URL, modelPath);
+      console.log(`whisper model: installed at ${modelPath}`);
+    } catch (err) {
+      console.error(`whisper model: install failed: ${err.message}`);
+      process.exit(1);
+    }
+  }
+
+  return { streamExePath, modelPath };
+}
+
 // ---------- Main ----------
 
 async function main() {
-  console.log('claude-io sidecar — Piper TTS setup');
+  console.log('claude-io sidecar — setup (Piper + Whisper)');
   console.log(`cache dir: ${CACHE_DIR}`);
   await ensureDir(PIPER_DIR);
   await ensureDir(VOICES_DIR);
@@ -232,12 +312,18 @@ async function main() {
     }
   }
 
+  // --- Whisper (STT) ---
+  console.log();
+  const whisperPaths = await installWhisper();
+
   console.log();
   console.log('Setup complete.');
-  console.log(`  binary: ${binaryTargetPath}`);
-  console.log(`  model : ${onnxTarget}`);
+  console.log(`  piper binary  : ${binaryTargetPath}`);
+  console.log(`  piper voice   : ${onnxTarget}`);
+  console.log(`  whisper binary: ${whisperPaths.streamExePath}`);
+  console.log(`  whisper model : ${whisperPaths.modelPath}`);
   console.log();
-  console.log('Test it:');
+  console.log('Test TTS:');
   console.log(`  echo '{"id":1,"method":"tts.speak","params":{"text":"Hello from claude-io."}}' | node sidecar/dist/main.js`);
 }
 

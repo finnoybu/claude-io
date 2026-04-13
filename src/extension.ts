@@ -4,6 +4,7 @@ import { ClaudeIoPanel } from './webview/ClaudeIoPanel.js';
 import { WebSpeechSttProvider } from './providers/WebSpeechSttProvider.js';
 import { WebSpeechTtsProvider } from './providers/WebSpeechTtsProvider.js';
 import { SidecarTtsProvider } from './providers/SidecarTtsProvider.js';
+import { SidecarSttProvider } from './providers/SidecarSttProvider.js';
 import { WebviewVisionProvider } from './providers/WebviewVisionProvider.js';
 import { SessionState } from './state/SessionState.js';
 import { TranscriptSink } from './services/TranscriptSink.js';
@@ -21,7 +22,9 @@ import { registerShowLog } from './commands/showLog.js';
 let logger: Logger;
 let panel: ClaudeIoPanel;
 let state: SessionState;
-let sttProvider: WebSpeechSttProvider;
+let webSpeechSttProvider: WebSpeechSttProvider;
+let sidecarSttProvider: SidecarSttProvider;
+let sttProvider: SidecarSttProvider;
 let webSpeechTtsProvider: WebSpeechTtsProvider;
 let sidecarTtsProvider: SidecarTtsProvider;
 let ttsProvider: SidecarTtsProvider;
@@ -37,7 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
   state = new SessionState();
   panel = new ClaudeIoPanel(context.extensionUri, logger, state);
 
-  sttProvider = new WebSpeechSttProvider(panel, logger);
+  webSpeechSttProvider = new WebSpeechSttProvider(panel, logger);
   webSpeechTtsProvider = new WebSpeechTtsProvider(panel, logger);
   visionProvider = new WebviewVisionProvider(panel, logger);
 
@@ -58,12 +61,13 @@ export function activate(context: vscode.ExtensionContext): void {
       logger.error('SidecarManager: startup failed', err);
     });
 
-  // TTS routes through the sidecar-backed provider (Piper), not the
-  // webview-based Web Speech API one. The webview provider still exists
-  // as a fallback and for future STT use where the webview path is
-  // relevant — but speakSelection goes to Piper via the sidecar.
+  // STT + TTS route through the sidecar-backed providers. The webview
+  // providers are kept around for disposal and reference but no commands
+  // are wired to them any more.
   sidecarTtsProvider = new SidecarTtsProvider(sidecarManager, logger);
   ttsProvider = sidecarTtsProvider;
+  sidecarSttProvider = new SidecarSttProvider(sidecarManager, logger);
+  sttProvider = sidecarSttProvider;
 
   const disposables: vscode.Disposable[] = [
     registerShowPanel(panel, logger),
@@ -78,7 +82,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     ...disposables,
-    sttProvider,
+    webSpeechSttProvider,
+    sidecarSttProvider,
     webSpeechTtsProvider,
     sidecarTtsProvider,
     visionProvider,

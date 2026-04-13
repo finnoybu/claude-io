@@ -11,11 +11,15 @@
 
 import { RpcServer } from './rpc.js';
 import { speak as piperSpeak } from './tts/piperTts.js';
+import { WhisperStreamSession } from './audio/whisperStream.js';
 
 const VERSION = '0.0.1';
 
 // In-flight TTS state so we can cancel mid-playback.
 let currentTtsAbort: AbortController | undefined;
+
+// Current STT session, if any. Only one allowed at a time.
+let currentSttSession: WhisperStreamSession | undefined;
 
 process.on('uncaughtException', (err) => {
   process.stderr.write(
@@ -86,6 +90,69 @@ rpc.register('tts.cancel', async () => {
     return { status: 'cancelled' };
   }
   return { status: 'nothing-to-cancel' };
+});
+
+rpc.register('stt.start', async (params) => {
+  if (currentSttSession?.isRunning()) {
+    throw new Error('stt: a session is already running; call stt.stop first');
+  }
+  const opts = (params ?? {}) as {
+    model?: string;
+    language?: string;
+    stepMs?: number;
+    lengthMs?: number;
+    threads?: number;
+    vadThreshold?: number;
+    captureDevice?: number;
+  };
+
+  const session = new WhisperStreamSession((event) => {
+    switch (event.type) {
+      case 'started':
+        rpc.event('stt.ready', {});
+        break;
+      case 'interim':
+        rpc.event('stt.interim', { text: event.text });
+        break;
+      case 'log':
+        rpc.log(event.level, `[whisper] ${event.message}`);
+        break;
+      case 'error':
+        rpc.event('stt.error', { code: 'whisper-stream-error', message: event.message });
+        break;
+      case 'exit':
+        rpc.event('stt.exit', { code: event.code, signal: event.signal });
+        break;
+    }
+  });
+  currentSttSession = session;
+  try {
+    session.start(opts);
+  } catch (err) {
+    currentSttSession = undefined;
+    throw err;
+  }
+  return { status: 'started' };
+});
+
+rpc.register('stt.stop', async () => {
+  const session = currentSttSession;
+  if (!session) {
+    return { status: 'not-running', text: '' };
+  }
+  const text = await session.stop();
+  currentSttSession = undefined;
+  return { status: 'stopped', text };
+});
+
+rpc.register('stt.cancel', async () => {
+  const session = currentSttSession;
+  if (!session) {
+    return { status: 'not-running' };
+  }
+  await session.stop();
+  currentSttSession = undefined;
+  return { status: 'cancelled' };
 });
 
 rpc.log('info', `sidecar: started (pid=${process.pid}, node=${process.version})`);
